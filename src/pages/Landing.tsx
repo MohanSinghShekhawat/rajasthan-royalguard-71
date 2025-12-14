@@ -19,16 +19,16 @@ export default function Landing() {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signIn, signUp, user, role } = useAuth();
+  const { signIn, signUp, user, role, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
 
   // Redirect if already logged in
   useEffect(() => {
-    if (user && role) {
-      navigate(role === 'tourist' ? '/tourist' : '/admin');
+    if (!authLoading && user && role) {
+      navigate(role === 'tourist' ? '/tourist' : '/admin', { replace: true });
     }
-  }, [user, role, navigate]);
+  }, [user, role, authLoading, navigate]);
 
   const handleRoleSelect = (role: UserRole) => {
     setSelectedRole(role);
@@ -62,6 +62,8 @@ export default function Landing() {
       title: 'Welcome back!',
       description: 'You have successfully signed in.',
     });
+    
+    // Role will be fetched by auth context, then useEffect will redirect
   };
 
   const handleSignUp = async () => {
@@ -88,11 +90,20 @@ export default function Landing() {
     setLoading(false);
 
     if (error) {
-      toast({
-        title: 'Sign Up Failed',
-        description: error.message || 'Failed to create account. Please try again.',
-        variant: 'destructive',
-      });
+      // Handle specific error for user already registered
+      if (error.message?.includes('already registered')) {
+        toast({
+          title: 'Account Exists',
+          description: 'This email is already registered. Please sign in instead.',
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Sign Up Failed',
+          description: error.message || 'Failed to create account. Please try again.',
+          variant: 'destructive',
+        });
+      }
       return;
     }
 
@@ -102,8 +113,17 @@ export default function Landing() {
     });
 
     // Navigate based on role
-    navigate(selectedRole === 'tourist' ? '/tourist' : '/admin');
+    navigate(selectedRole === 'tourist' ? '/tourist' : '/admin', { replace: true });
   };
+
+  // Show loading state while checking auth
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">

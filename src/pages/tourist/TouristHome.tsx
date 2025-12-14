@@ -1,25 +1,65 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Shield, Eye, Phone, MapPin, AlertTriangle, Clock, ChevronRight } from 'lucide-react';
+import { Shield, Eye, Phone, MapPin, AlertTriangle, Clock, ChevronRight, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 import { SafetyIndicator } from '@/components/ui/SafetyIndicator';
 import { SOSButton } from '@/components/ui/SOSButton';
 import { TouristLayout } from '@/components/tourist/TouristLayout';
 import { useGeolocation, DEFAULT_COORDS } from '@/hooks/useGeolocation';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { SafetyLevel, SafetyZone } from '@/types';
+import { SafetyLevel, SafetyZone, CrowdReport, DensityLevel } from '@/types';
 import { useToast } from '@/hooks/use-toast';
+import { getZoneInfo } from '@/utils/roboflowService';
 
 export default function TouristHome() {
   const [watchMeActive, setWatchMeActive] = useState(false);
   const [currentSafetyLevel, setCurrentSafetyLevel] = useState<SafetyLevel>('safe');
   const [nearbyZone, setNearbyZone] = useState<SafetyZone | null>(null);
+  const [crowdZones, setCrowdZones] = useState<CrowdReport[]>([]);
   const { latitude, longitude, loading: locationLoading } = useGeolocation({ watch: true });
   const { user } = useAuth();
   const { toast } = useToast();
+
+  // Fetch crowd zones
+  useEffect(() => {
+    async function fetchCrowdZones() {
+      const yesterday = new Date();
+      yesterday.setHours(yesterday.getHours() - 24);
+      
+      const { data } = await supabase
+        .from('crowd_reports')
+        .select('*')
+        .gte('created_at', yesterday.toISOString())
+        .order('created_at', { ascending: false })
+        .limit(10);
+      
+      if (data) {
+        setCrowdZones(data as CrowdReport[]);
+      }
+    }
+
+    fetchCrowdZones();
+
+    // Subscribe to realtime updates
+    const channel = supabase
+      .channel('tourist-crowd-updates')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'crowd_reports' },
+        (payload) => {
+          setCrowdZones(prev => [payload.new as CrowdReport, ...prev.slice(0, 9)]);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   // Check safety level based on location
   useEffect(() => {
@@ -131,6 +171,52 @@ export default function TouristHome() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Live Crowd Zones */}
+        {crowdZones.length > 0 && (
+          <Card className="glass-card">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                Live Crowd Zones
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {crowdZones.slice(0, 5).map((report) => {
+                  const zoneInfo = getZoneInfo(report.density_level);
+                  return (
+                    <div
+                      key={report.id}
+                      className={`p-3 rounded-lg ${zoneInfo.bgColor} flex items-center justify-between`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-3 h-3 rounded-full ${
+                          report.density_level === 'low' ? 'bg-safe' :
+                          report.density_level === 'medium' ? 'bg-caution' : 'bg-danger'
+                        }`} />
+                        <div>
+                          <p className="font-medium text-sm">{report.location_name || 'Tourist Spot'}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {report.person_count} people • {new Date(report.created_at).toLocaleTimeString()}
+                          </p>
+                        </div>
+                      </div>
+                      <Badge className={zoneInfo.color} variant="outline">
+                        {zoneInfo.name}
+                      </Badge>
+                    </div>
+                  );
+                })}
+              </div>
+              <Link to="/tourist/map">
+                <Button variant="ghost" className="w-full mt-3" size="sm">
+                  View on Map <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Quick Actions */}
         <div className="grid grid-cols-2 gap-4">
