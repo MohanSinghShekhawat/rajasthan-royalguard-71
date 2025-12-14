@@ -1,92 +1,104 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Users, Building2, Phone, ArrowRight, Loader2 } from 'lucide-react';
+import { Shield, Users, Building2, Mail, Lock, ArrowRight, Loader2, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { UserRole } from '@/types';
 
-type AuthStep = 'select-role' | 'enter-phone' | 'verify-otp';
+type AuthStep = 'select-role' | 'auth-form';
 
 export default function Landing() {
   const [step, setStep] = useState<AuthStep>('select-role');
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
-  const [phone, setPhone] = useState('');
-  const [otp, setOtp] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signInWithOTP, verifyOTP } = useAuth();
+  const { signIn, signUp, user, role } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
 
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user && role) {
+      navigate(role === 'tourist' ? '/tourist' : '/admin');
+    }
+  }, [user, role, navigate]);
+
   const handleRoleSelect = (role: UserRole) => {
     setSelectedRole(role);
-    setStep('enter-phone');
+    setStep('auth-form');
   };
 
-  const handleSendOTP = async () => {
-    if (!phone || phone.length < 10) {
+  const handleSignIn = async () => {
+    if (!email || !password) {
       toast({
-        title: 'Invalid Phone',
-        description: 'Please enter a valid 10-digit phone number',
+        title: 'Missing Fields',
+        description: 'Please enter both email and password',
         variant: 'destructive',
       });
       return;
     }
 
     setLoading(true);
-    const formattedPhone = phone.startsWith('+91') ? phone : `+91${phone}`;
-    
-    const { error } = await signInWithOTP(formattedPhone);
+    const { error } = await signIn(email, password);
     setLoading(false);
 
     if (error) {
       toast({
-        title: 'Error',
-        description: error.message || 'Failed to send OTP. Please try again.',
+        title: 'Login Failed',
+        description: error.message || 'Invalid credentials. Please try again.',
         variant: 'destructive',
       });
       return;
     }
 
     toast({
-      title: 'OTP Sent!',
-      description: 'Please check your phone for the verification code.',
-    });
-    setStep('verify-otp');
-  };
-
-  const handleVerifyOTP = async () => {
-    if (otp.length !== 6 || !selectedRole) {
-      toast({
-        title: 'Invalid OTP',
-        description: 'Please enter the 6-digit verification code',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setLoading(true);
-    const formattedPhone = phone.startsWith('+91') ? phone : `+91${phone}`;
-    
-    const { error } = await verifyOTP(formattedPhone, otp, selectedRole);
-    setLoading(false);
-
-    if (error) {
-      toast({
-        title: 'Verification Failed',
-        description: error.message || 'Invalid OTP. Please try again.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    toast({
-      title: 'Welcome!',
+      title: 'Welcome back!',
       description: 'You have successfully signed in.',
+    });
+  };
+
+  const handleSignUp = async () => {
+    if (!email || !password || !selectedRole) {
+      toast({
+        title: 'Missing Fields',
+        description: 'Please fill in all required fields',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (password.length < 6) {
+      toast({
+        title: 'Weak Password',
+        description: 'Password must be at least 6 characters',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setLoading(true);
+    const { error } = await signUp(email, password, selectedRole, fullName || undefined);
+    setLoading(false);
+
+    if (error) {
+      toast({
+        title: 'Sign Up Failed',
+        description: error.message || 'Failed to create account. Please try again.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    toast({
+      title: 'Account Created!',
+      description: 'You have successfully signed up.',
     });
 
     // Navigate based on role
@@ -156,118 +168,153 @@ export default function Landing() {
           </div>
         )}
 
-        {step === 'enter-phone' && (
+        {step === 'auth-form' && (
           <Card className="glass-card animate-in">
             <CardHeader className="text-center">
               <div className="flex justify-center mb-2">
                 <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
-                  <Phone className="w-6 h-6 text-primary" />
+                  {selectedRole === 'tourist' ? (
+                    <Users className="w-6 h-6 text-primary" />
+                  ) : (
+                    <Building2 className="w-6 h-6 text-primary" />
+                  )}
                 </div>
               </div>
-              <CardTitle>Enter Your Phone Number</CardTitle>
+              <CardTitle>
+                {selectedRole === 'tourist' ? 'Tourist Access' : 'Official Access'}
+              </CardTitle>
               <CardDescription>
-                We'll send you a verification code via SMS
+                Sign in or create a new account
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone Number</Label>
-                <div className="flex gap-2">
-                  <div className="flex items-center px-3 bg-muted rounded-lg text-sm font-medium">
-                    +91
+            <CardContent>
+              <Tabs defaultValue="signin" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 mb-4">
+                  <TabsTrigger value="signin">Sign In</TabsTrigger>
+                  <TabsTrigger value="signup">Sign Up</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="signin" className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="signin-email">Email</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        id="signin-email"
+                        type="email"
+                        placeholder="your@email.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
                   </div>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    placeholder="9876543210"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                    className="flex-1"
-                    maxLength={10}
-                  />
-                </div>
-              </div>
 
-              <Button 
-                onClick={handleSendOTP} 
-                className="w-full" 
-                disabled={loading || phone.length !== 10}
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Sending OTP...
-                  </>
-                ) : (
-                  'Send Verification Code'
-                )}
-              </Button>
+                  <div className="space-y-2">
+                    <Label htmlFor="signin-password">Password</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        id="signin-password"
+                        type="password"
+                        placeholder="••••••••"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+
+                  <Button 
+                    onClick={handleSignIn} 
+                    className="w-full" 
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Signing In...
+                      </>
+                    ) : (
+                      'Sign In'
+                    )}
+                  </Button>
+                </TabsContent>
+
+                <TabsContent value="signup" className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-name">Full Name (Optional)</Label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        id="signup-name"
+                        type="text"
+                        placeholder="John Doe"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-email">Email</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        id="signup-email"
+                        type="email"
+                        placeholder="your@email.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-password">Password</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        id="signup-password"
+                        type="password"
+                        placeholder="At least 6 characters"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+
+                  <Button 
+                    onClick={handleSignUp} 
+                    className="w-full" 
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Creating Account...
+                      </>
+                    ) : (
+                      'Create Account'
+                    )}
+                  </Button>
+                </TabsContent>
+              </Tabs>
 
               <Button 
                 variant="ghost" 
-                onClick={() => setStep('select-role')}
-                className="w-full"
+                onClick={() => {
+                  setStep('select-role');
+                  setEmail('');
+                  setPassword('');
+                  setFullName('');
+                }}
+                className="w-full mt-4"
               >
-                Back
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {step === 'verify-otp' && (
-          <Card className="glass-card animate-in">
-            <CardHeader className="text-center">
-              <CardTitle>Verify OTP</CardTitle>
-              <CardDescription>
-                Enter the 6-digit code sent to +91 {phone}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex justify-center">
-                <InputOTP maxLength={6} value={otp} onChange={setOtp}>
-                  <InputOTPGroup>
-                    <InputOTPSlot index={0} />
-                    <InputOTPSlot index={1} />
-                    <InputOTPSlot index={2} />
-                    <InputOTPSlot index={3} />
-                    <InputOTPSlot index={4} />
-                    <InputOTPSlot index={5} />
-                  </InputOTPGroup>
-                </InputOTP>
-              </div>
-
-              <Button 
-                onClick={handleVerifyOTP} 
-                className="w-full" 
-                disabled={loading || otp.length !== 6}
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Verifying...
-                  </>
-                ) : (
-                  'Verify & Continue'
-                )}
-              </Button>
-
-              <div className="text-center">
-                <Button 
-                  variant="link" 
-                  onClick={handleSendOTP}
-                  disabled={loading}
-                  className="text-sm"
-                >
-                  Didn't receive code? Resend
-                </Button>
-              </div>
-
-              <Button 
-                variant="ghost" 
-                onClick={() => setStep('enter-phone')}
-                className="w-full"
-              >
-                Change Phone Number
+                Back to Role Selection
               </Button>
             </CardContent>
           </Card>

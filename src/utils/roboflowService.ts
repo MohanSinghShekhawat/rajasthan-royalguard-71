@@ -1,7 +1,7 @@
 import { RoboflowResponse, DensityLevel } from '@/types';
 
-const ROBOFLOW_API_KEY = 'YOUR_ROBOFLOW_API_KEY';
-const ROBOFLOW_MODEL_ENDPOINT = 'https://detect.roboflow.com/crowd-detection/1';
+const ROBOFLOW_API_KEY = 'wgFJ9uWv1THh8GV4fGS3';
+const ROBOFLOW_MODEL_ENDPOINT = 'https://serverless.roboflow.com/crowd-density-estimation/3';
 
 function getDensityLevel(count: number): DensityLevel {
   if (count > 50) return 'high';
@@ -27,14 +27,6 @@ function generateMockResponse(): RoboflowResponse {
 }
 
 export async function analyzeImage(imageFile: File): Promise<RoboflowResponse> {
-  // Check if API key is configured
-  if (ROBOFLOW_API_KEY === 'YOUR_ROBOFLOW_API_KEY') {
-    console.log('Roboflow API key not configured, using mock response');
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    return generateMockResponse();
-  }
-
   try {
     // Convert file to base64
     const base64 = await new Promise<string>((resolve, reject) => {
@@ -82,11 +74,11 @@ export async function analyzeImage(imageFile: File): Promise<RoboflowResponse> {
 export function getDensityLabel(level: DensityLevel): string {
   switch (level) {
     case 'low':
-      return 'Low Density';
+      return 'Low Density - Safe Zone';
     case 'medium':
-      return 'Moderate Density';
+      return 'Moderate Density - Caution Zone';
     case 'high':
-      return 'High Density - Crowded';
+      return 'High Density - Crowded Zone';
   }
 }
 
@@ -98,5 +90,16 @@ export function getDensityColor(level: DensityLevel): string {
       return 'text-caution';
     case 'high':
       return 'text-danger';
+  }
+}
+
+export function getZoneInfo(level: DensityLevel): { name: string; color: string; bgColor: string } {
+  switch (level) {
+    case 'low':
+      return { name: 'Green Zone', color: 'text-safe', bgColor: 'bg-safe/10' };
+    case 'medium':
+      return { name: 'Yellow Zone', color: 'text-caution', bgColor: 'bg-caution/10' };
+    case 'high':
+      return { name: 'Red Zone', color: 'text-danger', bgColor: 'bg-danger/10' };
   }
 }
