@@ -8,8 +8,8 @@ interface AuthContextType {
   session: Session | null;
   role: UserRole | null;
   loading: boolean;
-  signInWithOTP: (phone: string) => Promise<{ error: Error | null }>;
-  verifyOTP: (phone: string, token: string, role: UserRole) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, role: UserRole, fullName?: string) => Promise<{ error: Error | null }>;
+  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -67,32 +67,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRole(data?.role as UserRole || null);
   }
 
-  async function signInWithOTP(phone: string) {
-    const { error } = await supabase.auth.signInWithOtp({
-      phone,
-    });
-    return { error: error as Error | null };
-  }
-
-  async function verifyOTP(phone: string, token: string, selectedRole: UserRole) {
-    const { data, error } = await supabase.auth.verifyOtp({
-      phone,
-      token,
-      type: 'sms',
+  async function signUp(email: string, password: string, selectedRole: UserRole, fullName?: string) {
+    const redirectUrl = `${window.location.origin}/`;
+    
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: redirectUrl,
+        data: {
+          full_name: fullName,
+        }
+      }
     });
 
     if (error) {
       return { error: error as Error };
     }
 
-    // Add role to user_roles table if not exists
+    // Add role to user_roles table
     if (data.user) {
       const { error: roleError } = await supabase
         .from('user_roles')
-        .upsert(
-          { user_id: data.user.id, role: selectedRole },
-          { onConflict: 'user_id,role' }
-        );
+        .insert({ user_id: data.user.id, role: selectedRole });
 
       if (roleError) {
         console.error('Error setting user role:', roleError);
@@ -102,6 +99,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     return { error: null };
+  }
+
+  async function signIn(email: string, password: string) {
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    return { error: error as Error | null };
   }
 
   async function signOut() {
@@ -117,8 +123,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session, 
       role, 
       loading, 
-      signInWithOTP, 
-      verifyOTP, 
+      signUp,
+      signIn,
       signOut 
     }}>
       {children}

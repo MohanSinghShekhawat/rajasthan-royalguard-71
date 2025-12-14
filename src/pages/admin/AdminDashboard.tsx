@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Users, Globe, AlertTriangle, MapPin, TrendingUp, TrendingDown } from 'lucide-react';
+import { Users, Globe, AlertTriangle, MapPin, Camera } from 'lucide-react';
 import { AdminLayout } from '@/components/admin/AdminLayout';
 import { MetricCard } from '@/components/ui/MetricCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SafetyMap } from '@/components/map/SafetyMap';
+import { CrowdFeedUploader } from '@/components/admin/CrowdFeedUploader';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { SOSAlert, CrowdReport } from '@/types';
+import { getZoneInfo } from '@/utils/roboflowService';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 const COLORS = ['hsl(210, 50%, 35%)', 'hsl(35, 45%, 65%)', 'hsl(15, 65%, 55%)', 'hsl(145, 55%, 42%)'];
@@ -118,6 +120,15 @@ export default function AdminDashboard() {
   return (
     <AdminLayout>
       <div className="space-y-6 animate-in">
+        {/* Header with Crowd Feed Button */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Command Center</h1>
+            <p className="text-muted-foreground">Real-time tourism monitoring dashboard</p>
+          </div>
+          <CrowdFeedUploader />
+        </div>
+
         {/* Metrics Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard
@@ -157,11 +168,26 @@ export default function AdminDashboard() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <MapPin className="w-5 h-5" />
-                Real-Time Crowd Heatmap
+                Real-Time Crowd Zones
               </CardTitle>
             </CardHeader>
             <CardContent>
               <SafetyMap height="350px" showCrowdData={true} showSafetyZones={true} />
+              {/* Zone Legend */}
+              <div className="flex justify-center gap-4 mt-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded-full bg-safe" />
+                  <span className="text-sm">Green Zone (0-20)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded-full bg-caution" />
+                  <span className="text-sm">Yellow Zone (21-50)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded-full bg-danger" />
+                  <span className="text-sm">Red Zone (50+)</span>
+                </div>
+              </div>
             </CardContent>
           </Card>
 
@@ -182,52 +208,56 @@ export default function AdminDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3 max-h-[300px] overflow-y-auto">
-                {sosAlerts.length === 0 ? (
+                {sosAlerts.length === 0 && crowdReports.length === 0 ? (
                   <p className="text-muted-foreground text-center py-8">
                     No active alerts
                   </p>
                 ) : (
-                  sosAlerts.map((alert) => (
-                    <div
-                      key={alert.id}
-                      className="p-3 bg-danger/10 border border-danger/20 rounded-lg"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-danger">SOS Alert</span>
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(alert.created_at).toLocaleTimeString()}
-                        </span>
+                  <>
+                    {sosAlerts.map((alert) => (
+                      <div
+                        key={alert.id}
+                        className="p-3 bg-danger/10 border border-danger/20 rounded-lg"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-danger">SOS Alert</span>
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(alert.created_at).toLocaleTimeString()}
+                          </span>
+                        </div>
+                        {alert.latitude && alert.longitude && (
+                          <p className="text-sm text-muted-foreground mt-1">
+                            📍 {alert.latitude.toFixed(4)}, {alert.longitude.toFixed(4)}
+                          </p>
+                        )}
                       </div>
-                      {alert.latitude && alert.longitude && (
-                        <p className="text-sm text-muted-foreground mt-1">
-                          📍 {alert.latitude.toFixed(4)}, {alert.longitude.toFixed(4)}
-                        </p>
-                      )}
-                    </div>
-                  ))
-                )}
+                    ))}
 
-                {/* Recent crowd reports */}
-                {crowdReports.slice(0, 3).map((report) => (
-                  <div
-                    key={report.id}
-                    className={`p-3 rounded-lg border ${
-                      report.density_level === 'high' 
-                        ? 'bg-caution/10 border-caution/20' 
-                        : 'bg-muted/50 border-border'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">Crowd Report</span>
-                      <Badge variant={report.density_level === 'high' ? 'destructive' : 'secondary'}>
-                        {report.density_level}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {report.person_count} people detected
-                    </p>
-                  </div>
-                ))}
+                    {/* Recent crowd reports */}
+                    {crowdReports.slice(0, 5).map((report) => {
+                      const zoneInfo = getZoneInfo(report.density_level);
+                      return (
+                        <div
+                          key={report.id}
+                          className={`p-3 rounded-lg border ${zoneInfo.bgColor} border-border`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">{report.location_name || 'Crowd Report'}</span>
+                            <Badge className={zoneInfo.color}>
+                              {zoneInfo.name}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {report.person_count} people detected
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(report.created_at).toLocaleTimeString()}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
               </div>
             </CardContent>
           </Card>

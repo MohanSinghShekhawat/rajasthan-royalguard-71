@@ -3,8 +3,9 @@ import { MapContainer, TileLayer, Circle, Marker, Popup, useMap } from 'react-le
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { supabase } from '@/integrations/supabase/client';
-import { SafetyZone, CrowdReport } from '@/types';
+import { SafetyZone, CrowdReport, DensityLevel } from '@/types';
 import { useGeolocation, DEFAULT_COORDS } from '@/hooks/useGeolocation';
+import { getZoneInfo } from '@/utils/roboflowService';
 
 // Fix for default marker icons in Leaflet with Vite
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -32,10 +33,10 @@ const safetyColors = {
   danger: '#DC2626',
 };
 
-const densityColors = {
-  low: '#22C55E',
-  medium: '#F59E0B',
-  high: '#EF4444',
+const densityColors: Record<DensityLevel, string> = {
+  low: '#22C55E',    // Green Zone
+  medium: '#F59E0B', // Yellow Zone
+  high: '#EF4444',   // Red Zone
 };
 
 function LocationMarker() {
@@ -167,30 +168,43 @@ export function SafetyMap({
           </Circle>
         ))}
 
-        {/* Crowd Reports */}
-        {showCrowdData && crowdReports.map((report) => (
-          <Circle
-            key={report.id}
-            center={[report.latitude, report.longitude]}
-            radius={100}
-            pathOptions={{
-              color: densityColors[report.density_level],
-              fillColor: densityColors[report.density_level],
-              fillOpacity: 0.5,
-            }}
-          >
-            <Popup>
-              <div>
-                <h3 className="font-semibold">Crowd Report</h3>
-                <p className="text-sm">People detected: {report.person_count}</p>
-                <p className="text-sm">Density: {report.density_level}</p>
-                {report.location_name && (
-                  <p className="text-sm text-muted-foreground">{report.location_name}</p>
-                )}
-              </div>
-            </Popup>
-          </Circle>
-        ))}
+        {/* Crowd Reports with Zone Colors */}
+        {showCrowdData && crowdReports.map((report) => {
+          const zoneInfo = getZoneInfo(report.density_level);
+          return (
+            <Circle
+              key={report.id}
+              center={[report.latitude, report.longitude]}
+              radius={150}
+              pathOptions={{
+                color: densityColors[report.density_level],
+                fillColor: densityColors[report.density_level],
+                fillOpacity: 0.5,
+                weight: 3,
+              }}
+            >
+              <Popup>
+                <div className="min-w-[150px]">
+                  <h3 className="font-semibold">{report.location_name || 'Crowd Report'}</h3>
+                  <div className="mt-2 space-y-1">
+                    <p className="text-sm">
+                      <strong>People:</strong> {report.person_count}
+                    </p>
+                    <p className="text-sm">
+                      <strong>Zone:</strong>{' '}
+                      <span style={{ color: densityColors[report.density_level] }}>
+                        {zoneInfo.name}
+                      </span>
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {new Date(report.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              </Popup>
+            </Circle>
+          );
+        })}
       </MapContainer>
     </div>
   );
